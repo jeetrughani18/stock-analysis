@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.csv
+*.DS_Store
+.vscode/
+temp.py
+backup.py
+app.py
