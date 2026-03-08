@@ -1,5 +1,6 @@
-yfinance
-pandas
-numpy
-streamlit
-plotly
+yfinance>=0.2.31
+pandas>=2.0.0
+numpy>=1.24.0
+streamlit>=1.45.0
+plotly>=5.18.0
+altair>=5.0.0,<7.0.0
