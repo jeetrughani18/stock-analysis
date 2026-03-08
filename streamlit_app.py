@@ -4,6 +4,8 @@ Stock Performance Analysis — Streamlit Web App
 Run with:  streamlit run streamlit_app.py
 """
 
+from __future__ import annotations
+
 import streamlit as st
 import pandas as pd
 import yfinance as yf
