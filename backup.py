@@ -6,8 +6,6 @@ benchmark index, then computes a comprehensive set of risk / return metrics
 and saves everything to a CSV file.
 """
 
-from __future__ import annotations
-
 import sys
 import datetime as dt
 
@@ -89,13 +87,9 @@ def rolling_beta(df: pd.DataFrame, window: int = TRADING_DAYS_1Y) -> pd.Series:
 
 
 def latest_rolling_beta(df: pd.DataFrame, window: int = TRADING_DAYS_1Y) -> float:
-    """Most recent rolling beta value. Falls back to all available data."""
-    actual_window = min(window, len(df))
-    beta_series = rolling_beta(df, actual_window)
-    valid = beta_series.dropna()
-    if valid.empty:
-        return np.nan
-    return valid.iloc[-1]
+    """Most recent rolling beta value."""
+    beta_series = rolling_beta(df, window)
+    return beta_series.dropna().iloc[-1]
 
 
 # 2. Information Ratio (trailing 1 Year)
@@ -248,80 +242,50 @@ def compute_all_metrics(df: pd.DataFrame,
     df_3y = slice_by_years(df, 3)
     df_5y = slice_by_years(df, 5)
 
-    # Check which periods have enough data (need ≥ 2 points)
-    total_days = len(df)
-    has_1y = len(df_1y) >= 2
-    has_3y = len(df_3y) > len(df_1y)   # more data than 1Y
-    has_5y = len(df_5y) > len(df_3y)   # more data than 3Y
+    # 1. Rolling Beta (latest)
+    metrics["Rolling_1Y_Beta"] = round(latest_rolling_beta(df), 4)
 
-    # If less than 1 year of data, use all available data for 1Y metrics
-    if not has_1y:
-        stock_1y = stock_prices
-        bench_1y = bench_prices
-        df_1y = df
-        has_1y = len(df_1y) >= 2
-
-    # 1. Rolling Beta (latest — uses all available data)
-    beta_val = latest_rolling_beta(df)
-    metrics["Rolling_1Y_Beta"] = round(beta_val, 4) if not np.isnan(beta_val) else "N/A"
-
-    # 2. Information Ratio (1Y or available)
-    if has_1y:
-        metrics["Information_Ratio_1Y"] = round(
-            information_ratio(df_1y, window=len(df_1y)), 4)
-    else:
-        metrics["Information_Ratio_1Y"] = "N/A"
+    # 2. Information Ratio (1Y)
+    metrics["Information_Ratio_1Y"] = round(
+        information_ratio(df_1y, window=len(df_1y)), 4)
 
     # 3. Maximum Drawdown
-    metrics["Max_Drawdown_1Y_Stock"] = round(max_drawdown(stock_1y), 4) if has_1y else "N/A"
-    metrics["Max_Drawdown_3Y_Stock"] = round(max_drawdown(stock_3y), 4) if has_3y else "N/A"
-    metrics["Max_Drawdown_5Y_Stock"] = round(max_drawdown(stock_5y), 4) if has_5y else "N/A"
+    metrics["Max_Drawdown_1Y_Stock"] = round(max_drawdown(stock_1y), 4)
+    metrics["Max_Drawdown_3Y_Stock"] = round(max_drawdown(stock_3y), 4)
+    metrics["Max_Drawdown_5Y_Stock"] = round(max_drawdown(stock_5y), 4)
 
     # 4. Days to Recovery (stock & benchmark, 1Y / 3Y / 5Y)
-    metrics["Days_to_Recovery_1Y_Stock"] = days_to_recovery(stock_1y) if has_1y else "N/A"
-    metrics["Days_to_Recovery_3Y_Stock"] = days_to_recovery(stock_3y) if has_3y else "N/A"
-    metrics["Days_to_Recovery_5Y_Stock"] = days_to_recovery(stock_5y) if has_5y else "N/A"
-    metrics["Days_to_Recovery_1Y_Bench"] = days_to_recovery(bench_1y) if has_1y else "N/A"
-    metrics["Days_to_Recovery_3Y_Bench"] = days_to_recovery(bench_3y) if has_3y else "N/A"
-    metrics["Days_to_Recovery_5Y_Bench"] = days_to_recovery(bench_5y) if has_5y else "N/A"
+    metrics["Days_to_Recovery_1Y_Stock"] = days_to_recovery(stock_1y)
+    metrics["Days_to_Recovery_3Y_Stock"] = days_to_recovery(stock_3y)
+    metrics["Days_to_Recovery_5Y_Stock"] = days_to_recovery(stock_5y)
+    metrics["Days_to_Recovery_1Y_Bench"] = days_to_recovery(bench_1y)
+    metrics["Days_to_Recovery_3Y_Bench"] = days_to_recovery(bench_3y)
+    metrics["Days_to_Recovery_5Y_Bench"] = days_to_recovery(bench_5y)
 
     # 5. Average Drawdown
-    metrics["Avg_Drawdown_1Y_Stock"] = round(average_drawdown(stock_1y), 4) if has_1y else "N/A"
-    metrics["Avg_Drawdown_3Y_Stock"] = round(average_drawdown(stock_3y), 4) if has_3y else "N/A"
-    metrics["Avg_Drawdown_5Y_Stock"] = round(average_drawdown(stock_5y), 4) if has_5y else "N/A"
+    metrics["Avg_Drawdown_1Y_Stock"] = round(average_drawdown(stock_1y), 4)
+    metrics["Avg_Drawdown_3Y_Stock"] = round(average_drawdown(stock_3y), 4)
+    metrics["Avg_Drawdown_5Y_Stock"] = round(average_drawdown(stock_5y), 4)
 
     # 6. Pain Ratio
-    metrics["Pain_Ratio_1Y"] = round(pain_ratio(stock_1y), 4) if has_1y else "N/A"
-    metrics["Pain_Ratio_3Y"] = round(pain_ratio(stock_3y), 4) if has_3y else "N/A"
-    metrics["Pain_Ratio_5Y"] = round(pain_ratio(stock_5y), 4) if has_5y else "N/A"
+    metrics["Pain_Ratio_1Y"] = round(pain_ratio(stock_1y), 4)
+    metrics["Pain_Ratio_3Y"] = round(pain_ratio(stock_3y), 4)
+    metrics["Pain_Ratio_5Y"] = round(pain_ratio(stock_5y), 4)
 
     # 7. Return Spread / Outperformance Days
-    for label, df_slice, has_data in [("1Y", df_1y, has_1y),
-                                       ("3Y", df_3y, has_3y),
-                                       ("5Y", df_5y, has_5y)]:
-        if has_data:
-            sp = return_spread(df_slice)
-            metrics[f"Spread_Total_Days_{label}"] = sp["total_days"]
-            metrics[f"Spread_Outperf_Days_{label}"] = sp["outperf_days"]
-            metrics[f"Spread_Outperf_Pct_{label}"] = sp["outperf_pct"]
-        else:
-            metrics[f"Spread_Total_Days_{label}"] = "N/A"
-            metrics[f"Spread_Outperf_Days_{label}"] = "N/A"
-            metrics[f"Spread_Outperf_Pct_{label}"] = "N/A"
+    for label, df_slice in [("1Y", df_1y), ("3Y", df_3y), ("5Y", df_5y)]:
+        sp = return_spread(df_slice)
+        metrics[f"Spread_Total_Days_{label}"] = sp["total_days"]
+        metrics[f"Spread_Outperf_Days_{label}"] = sp["outperf_days"]
+        metrics[f"Spread_Outperf_Pct_{label}"] = sp["outperf_pct"]
 
-    # 8. Calmar Ratio (1Y or available)
-    if has_1y:
-        metrics["Calmar_Ratio_1Y"] = round(
-            calmar_ratio(stock_1y, window=len(stock_1y)), 4)
-    else:
-        metrics["Calmar_Ratio_1Y"] = "N/A"
+    # 8. Calmar Ratio (1Y)
+    metrics["Calmar_Ratio_1Y"] = round(
+        calmar_ratio(stock_1y, window=len(stock_1y)), 4)
 
-    # 9. Sortino Ratio (1Y or available)
-    if has_1y:
-        metrics["Sortino_Ratio_1Y"] = round(
-            sortino_ratio(df_1y, risk_free_rate, window=len(df_1y)), 4)
-    else:
-        metrics["Sortino_Ratio_1Y"] = "N/A"
+    # 9. Sortino Ratio (1Y)
+    metrics["Sortino_Ratio_1Y"] = round(
+        sortino_ratio(df_1y, risk_free_rate, window=len(df_1y)), 4)
 
     return pd.DataFrame(list(metrics.items()), columns=["Metric", "Value"])
 
@@ -379,11 +343,12 @@ def main() -> None:
     aligned_stock = df["stock_price"]
     aligned_bench = df["bench_price"]
 
-    if len(df) < 2:
+    required = TRADING_DAYS_1Y  # minimum 1 year of data
+    if len(df) < required:
         sys.exit(f"[ERROR] Only {len(df)} aligned trading days available; "
-                 f"need at least 2 days to compute returns.")
+                 f"need at least {required}.")
 
-    print(f"📊 Computing metrics ({len(df)} trading days available)…\n")
+    print("📊 Computing metrics…\n")
     result = compute_all_metrics(
         df, aligned_stock, aligned_bench,
         risk_free_rate, stock_symbol, bench_name,
