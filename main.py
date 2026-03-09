@@ -158,18 +158,24 @@ def days_to_recovery(prices: pd.Series) -> int:
 
 
 # 6. Pain Ratio
-def pain_ratio(prices: pd.Series, window: int | None = None) -> float:
+def pain_ratio(prices: pd.Series, risk_free_rate: float = 0.0,
+               window: int | None = None) -> float:
     """
-    Pain Ratio = Average Return / |Average Drawdown|
-    Computed over the last *window* trading days.
+    Pain Ratio = Average Excess Return / Pain Index
+
+    Average Excess Return = Annualised Avg Return − Risk-Free Rate
+    Pain Index            = Σ|drawdowns| / number of periods
+                          (average of absolute drawdown values over ALL periods)
     """
     if window is not None:
         prices = prices.iloc[-window:]
     avg_ret = prices.pct_change().dropna().mean() * TRADING_DAYS_1Y
-    avg_dd = average_drawdown(prices)
-    if avg_dd == 0:
+    avg_excess_ret = avg_ret - risk_free_rate
+    dd = drawdown_series(prices)
+    pain_index = dd.abs().mean()          # Σ|dd| / N across all periods
+    if pain_index == 0:
         return np.nan
-    return avg_ret / abs(avg_dd)
+    return avg_excess_ret / pain_index
 
 
 # 7. Return Spread vs Benchmark (Outperformance Days)
@@ -291,9 +297,9 @@ def compute_all_metrics(df: pd.DataFrame,
     metrics["Avg_Drawdown_5Y_Stock"] = round(average_drawdown(stock_5y), 4) if has_5y else "N/A"
 
     # 6. Pain Ratio
-    metrics["Pain_Ratio_1Y"] = round(pain_ratio(stock_1y), 4) if has_1y else "N/A"
-    metrics["Pain_Ratio_3Y"] = round(pain_ratio(stock_3y), 4) if has_3y else "N/A"
-    metrics["Pain_Ratio_5Y"] = round(pain_ratio(stock_5y), 4) if has_5y else "N/A"
+    metrics["Pain_Ratio_1Y"] = round(pain_ratio(stock_1y, risk_free_rate), 4) if has_1y else "N/A"
+    metrics["Pain_Ratio_3Y"] = round(pain_ratio(stock_3y, risk_free_rate), 4) if has_3y else "N/A"
+    metrics["Pain_Ratio_5Y"] = round(pain_ratio(stock_5y, risk_free_rate), 4) if has_5y else "N/A"
 
     # 7. Return Spread / Outperformance Days
     for label, df_slice, has_data in [("1Y", df_1y, has_1y),
